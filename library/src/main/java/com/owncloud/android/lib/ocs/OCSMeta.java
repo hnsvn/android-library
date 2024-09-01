@@ -1,0 +1,38 @@
+/*
+ * Hnscloud Android Library
+ *
+ * SPDX-FileCopyrightText: 2023-2024 Hnscloud GmbH and Hnscloud contributors
+ * SPDX-FileCopyrightText: 2023 Álvaro Brey <alvaro.brey@hns.vn>
+ * SPDX-FileCopyrightText: 2018 Bartosz Przybylski <bart.p.pl@gmail.com>
+ * SPDX-License-Identifier: MIT
+ */
+package com.owncloud.android.lib.ocs;
+
+import com.google.gson.annotations.SerializedName;
+
+/**
+ * A meta class which is a part of OCS response from server
+ *
+ * @author Bartosz Przybylski
+ */
+public class OCSMeta {
+    @SerializedName("status")
+    public String status;
+    @SerializedName("statuscode")
+    public int statusCode;
+    @SerializedName("message")
+    public String message;
+
+    public String getStatus() {
+        return this.status;
+    }
+
+    public int getStatusCode() {
+        return this.statusCode;
+    }
+
+    public String getMessage() {
+        return this.message;
+    }
+    // TODO(bp): add paging information
+}

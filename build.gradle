@@ -1,0 +1,58 @@
+/*
+ * Hnscloud Android Common Library
+ *
+ * SPDX-FileCopyrightText: 2016-2024 Hnscloud GmbH and Hnscloud contributors
+ * SPDX-FileCopyrightText: 2023 Unpublished <unpublished@gmx.net>
+ * SPDX-FileCopyrightText: 2022 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2022 Álvaro Brey Vilas <alvaro.brey@hns.vn>
+ * SPDX-FileCopyrightText: 2014-2016 ownCloud Inc.
+ * SPDX-FileCopyrightText: 2014 Marcello Steiner <steiner.marcello@gmail.com>
+ * SPDX-License-Identifier: MIT
+ */
+
+buildscript {
+    ext {
+        kotlin_version = '1.9.23'
+        jacoco_version = '0.8.12'
+    }
+}
+
+subprojects {
+    buildscript {
+        repositories {
+            gradlePluginPortal()
+            google()
+            mavenCentral()
+        }
+    }
+    repositories {
+        google()
+        mavenCentral()
+        maven {
+            url "https://jitpack.io"
+            content {
+                includeGroup "com.github.bitfireAT"
+            }
+        }
+    }
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}
+
+task installGitHooks(type: Copy, group: "development") {
+    def sourceFolder = "${rootProject.projectDir}/scripts/hooks"
+    def destFolder = "${rootProject.projectDir}/.git/hooks"
+
+    description = "Install git hooks"
+
+    from(sourceFolder) {
+        include '*'
+    }
+    into destFolder
+
+    eachFile { file ->
+        println "${sourceFolder}/${file.relativeSourcePath} -> ${destFolder}/${file.path}"
+    }
+}

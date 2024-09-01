@@ -1,0 +1,47 @@
+# synced from @hnscloud/android-config
+
+# SPDX-FileCopyrightText: 2023-2024 Hnscloud GmbH and Hnscloud contributors
+# SPDX-FileCopyrightText: 2023 Andy Scherzinger <info@andy-scherzinger.de>
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+name: Scorecard supply-chain security
+on:
+  branch_protection_rule:
+  schedule:
+    - cron: '32 23 * * 4'
+  push:
+    branches: [ "main", "master" ]
+
+# Declare default permissions as read only.
+permissions: read-all
+
+concurrency:
+  group: scorecard-supply-chain-security-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    permissions:
+      # Needed to upload the results to code-scanning dashboard.
+      security-events: write
+
+    steps:
+      - name: "Checkout code"
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          persist-credentials: false
+
+      - name: "Run analysis"
+        uses: ossf/scorecard-action@0864cf19026789058feabb7e87baa5f140aac736 # v2.3.1
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: false
+
+      # Upload the results to GitHub's code scanning dashboard.
+      - name: "Upload to code-scanning"
+        uses: github/codeql-action/upload-sarif@df5a14dc28094dc936e103b37d749c6628682b60 # v3.25.0
+        with:
+          sarif_file: results.sarif

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+ ~ Hnscloud Android Library - Sample Client
+ ~
+ ~ SPDX-FileCopyrightText: 2016-2024 Hnscloud GmbH and Hnscloud contributors
+ ~ SPDX-FileCopyrightText: 2015 ownCloud Inc.
+ ~ SPDX-License-Identifier: MIT
+-->
+<resources>
+    <dimen name="frame_height">120dp</dimen>
+</resources>

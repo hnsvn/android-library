@@ -1,0 +1,60 @@
+/*
+ * Hnscloud Android Common Library
+ *
+ * SPDX-FileCopyrightText: 2016-2024 Hnscloud GmbH and Hnscloud contributors
+ * SPDX-FileCopyrightText: 2022-2023 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2023 Andy Scherzinger <info@andy-scherzinger.de>
+ * SPDX-FileCopyrightText: 2023 Alper Ozturk <alper_ozturk@proton.me>
+ * SPDX-FileCopyrightText: 2014 Marcello Steiner <steiner.marcello@gmail.com>
+ * SPDX-License-Identifier: MIT
+ */
+
+buildscript {
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.3.2'
+        classpath 'com.github.spotbugs.snom:spotbugs-gradle-plugin:6.0.12'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        classpath "io.gitlab.arturbosch.detekt:detekt-gradle-plugin:1.23.6"
+        classpath "commons-httpclient:commons-httpclient:3.1@jar" // remove after entire switch to lib v2
+    }
+}
+
+apply plugin: 'com.android.application'
+apply from: "$rootProject.projectDir/jacoco.gradle"
+
+repositories {
+    google()
+}
+
+android {
+    compileSdk 34
+
+    lintOptions {
+        abortOnError false
+    }
+
+    packagingOptions {
+        exclude 'META-INF/LICENSE.txt'
+    }
+    defaultConfig {
+        minSdkVersion 14
+        targetSdkVersion 34
+
+        multiDexEnabled true
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+    namespace 'com.owncloud.android.lib.sampleclient'
+}
+
+dependencies {
+    implementation project(path: ':library')
+    implementation "commons-httpclient:commons-httpclient:3.1@jar"
+    // remove after entire switch to lib v2
+    implementation "org.jacoco:org.jacoco.agent:$jacoco_version:runtime"
+    implementation 'androidx.test:monitor:1.6.1'
+    androidTestImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test:monitor:1.6.1'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test:runner:1.5.2'
+}

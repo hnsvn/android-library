@@ -1,0 +1,237 @@
+---
+kind: pipeline
+type: docker
+name: test-master
+
+# SPDX-FileCopyrightText: 2016-2024 Hnscloud GmbH and Hnscloud contributors
+# SPDX-License-Identifier: MIT
+
+steps:
+- name: test
+  image: ghcr.io/hnscloud/continuous-integration-android8:3
+  privileged: true
+  environment:
+    LOG_USERNAME:
+      from_secret: LOG_USERNAME
+    LOG_PASSWORD:
+      from_secret: LOG_PASSWORD
+    GIT_USERNAME:
+      from_secret: GIT_USERNAME
+    GIT_TOKEN:
+      from_secret: GIT_TOKEN
+  commands:
+    - emulator -avd android -no-snapshot -gpu swiftshader_indirect -no-window -no-audio -skin 500x833 &
+    - sed -i s"#server#server-master#" gradle.properties
+    - sed -i s"#1#5#" ./library/src/androidTest/java/com/owncloud/android/RetryTestRule.kt
+    - ./gradlew assembleDebug
+    - ./scripts/wait_for_emulator.sh
+    - ./scripts/wait_for_server.sh server-master
+    - scripts/deleteOutdatedComments.sh "master" "Unit" $DRONE_PULL_REQUEST $GIT_USERNAME $GIT_TOKEN
+    - scripts/deleteOutdatedComments.sh "master" "IT" $DRONE_PULL_REQUEST $GIT_USERNAME $GIT_TOKEN
+    - adb logcat -c
+    - adb logcat > logcat.txt &
+    - ./gradlew jacocoTestDebugUnitTestReport || scripts/uploadReport.sh $LOG_USERNAME $LOG_PASSWORD $DRONE_BUILD_NUMBER "master" "Unit" $DRONE_PULL_REQUEST $GIT_USERNAME $GIT_TOKEN
+    - ./gradlew installDebugAndroidTest
+    - ./gradlew createDebugCoverageReport || scripts/uploadReport.sh $LOG_USERNAME $LOG_PASSWORD $DRONE_BUILD_NUMBER "master" "IT" $DRONE_PULL_REQUEST $GIT_USERNAME $GIT_TOKEN
+    - ./gradlew combinedTestReport
+    - curl -Os https://uploader.codecov.io/latest/linux/codecov
+    - chmod +x codecov
+    - ./codecov -t 2eec98c3-ff20-4cad-9e08-463471a33431
+
+- name: notify
+  image: drillster/drone-email
+  settings:
+    port: 587
+    from: hnscloud-drone@kaminsky.me
+    recipients_only: true
+    username:
+      from_secret: EMAIL_USERNAME
+    password:
+      from_secret: EMAIL_PASSWORD
+    recipients:
+      from_secret: EMAIL_RECIPIENTS
+    host:
+      from_secret: EMAIL_HOST
+  when:
+    event:
+      - push
+    status:
+      - failure
+    branch:
+      - master
+      - stable-*
+
+services:
+  - name: server-master
+    image: ghcr.io/hnscloud/continuous-integration-shallow-server:latest
+    commands:
+      - apt-get update && apt-get install -y composer
+      - mkdir /var/www/.nvm /var/www/.npm; touch /var/www/.bashrc; chown -R 33:33 /var/www/.nvm /var/www/.npm /var/www/.bashrc
+      - su www-data -c "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.37.2/install.sh | bash"
+      - su www-data -c "source ~/.bashrc; nvm install node"
+      - /usr/local/bin/initnc.sh
+      - su www-data -c "php /var/www/html/occ log:manage --level warning"
+      - su www-data -c "OC_PASS=user1 php /var/www/html/occ user:add --password-from-env --display-name='User One' user1"
+      - su www-data -c "OC_PASS=user2 php /var/www/html/occ user:add --password-from-env --display-name='User Two' user2"
+      - su www-data -c "OC_PASS=user3 php /var/www/html/occ user:add --password-from-env --display-name='User Three' user3"
+      - su www-data -c "OC_PASS=test php /var/www/html/occ user:add --password-from-env --display-name='Test@Test' test@test"
+      - su www-data -c "OC_PASS=test php /var/www/html/occ user:add --password-from-env --display-name='Test Spaces' 'test test'"
+      - su www-data -c "php /var/www/html/occ user:setting user2 files quota 1G"
+      - su www-data -c "php /var/www/html/occ group:add users"
+      - su www-data -c "php /var/www/html/occ group:adduser users user1"
+      - su www-data -c "php /var/www/html/occ group:adduser users user2"
+      - su www-data -c "php /var/www/html/occ group:adduser users test"
+      - su www-data -c "git clone -b master https://github.com/hnscloud/activity.git /var/www/html/apps/activity/"
+      - su www-data -c "php /var/www/html/occ app:enable activity"
+      - su www-data -c "git clone -b main https://github.com/hnscloud/text.git /var/www/html/apps/text/"
+      - su www-data -c "php /var/www/html/occ app:enable text"
+      - su www-data -c "git clone -b master https://github.com/hnscloud/end_to_end_encryption/  /var/www/html/apps/end_to_end_encryption/"
+      - su www-data -c "php /var/www/html/occ app:enable end_to_end_encryption"
+      - su www-data -c "git clone -b master https://github.com/hnscloud/password_policy/  /var/www/html/apps/password_policy/"
+      - su www-data -c "php /var/www/html/occ app:enable password_policy"
+      - su www-data -c "git clone -b master https://github.com/hnscloud/external/  /var/www/html/apps/external/"
+      - su www-data -c "cd /var/www/html/apps/external; composer install --no-dev"
+      - su www-data -c "php /var/www/html/occ app:enable external"
+      - su www-data -c 'php /var/www/html/occ config:app:set external sites --value="{\"1\":{\"id\":1,\"name\":\"Hnscloud\",\"url\":\"https:\/\/www.hns.vn\",\"lang\":\"\",\"type\":\"link\",\"device\":\"\",\"icon\":\"external.svg\",\"groups\":[],\"redirect\":false},\"2\":{\"id\":2,\"name\":\"Forum\",\"url\":\"https:\/\/help.hns.vn\",\"lang\":\"\",\"type\":\"link\",\"device\":\"\",\"icon\":\"external.svg\",\"groups\":[],\"redirect\":false}}"'
+      - su www-data -c "git clone -b main https://github.com/hnscloud/files_lock.git /var/www/html/apps/files_lock/"
+      - su www-data -c "php /var/www/html/occ app:enable -f files_lock"
+      - su www-data -c "git clone https://github.com/hnscloud/groupfolders.git /var/www/html/apps/groupfolders/"
+      - su www-data -c "php /var/www/html/occ app:enable -f groupfolders"
+      - su www-data -c "php /var/www/html/occ groupfolders:create groupfolder"
+      - su www-data -c "php /var/www/html/occ groupfolders:group 1 users"
+      - su www-data -c "git clone https://github.com/hnscloud/notifications.git /var/www/html/apps/notifications/"
+      - su www-data -c "php /var/www/html/occ app:enable -f notifications"
+      - su www-data -c "php /var/www/html/occ notification:generate test -d test"
+      - su www-data -c "git clone https://github.com/hnscloud/photos.git /var/www/html/apps/photos/"
+      - su www-data -c "cd /var/www/html/apps/photos; composer install"
+      - su www-data -c "php /var/www/html/occ app:enable -f photos"
+      - su www-data -c "git clone https://github.com/hnscloud/assistant.git /var/www/html/apps/assistant/"
+      - su www-data -c "cd /var/www/html/apps/assistant; source ~/.bashrc; make"
+      - su www-data -c "php /var/www/html/occ app:enable -f assistant"
+      - su www-data -c "php /var/www/html/occ app:enable -f testing"
+      - /usr/local/bin/run.sh
+
+trigger:
+  branch:
+    - master
+    - stable-*
+  event:
+    - push
+    - pull_request
+---
+kind: pipeline
+type: docker
+name: test-stable
+
+steps:
+  - name: test
+    image: ghcr.io/hnscloud/continuous-integration-android8:3
+    privileged: true
+    environment:
+      LOG_USERNAME:
+        from_secret: LOG_USERNAME
+      LOG_PASSWORD:
+        from_secret: LOG_PASSWORD
+      GIT_USERNAME:
+        from_secret: GIT_USERNAME
+      GIT_TOKEN:
+        from_secret: GIT_TOKEN
+    commands:
+      - emulator -avd android -no-snapshot -gpu swiftshader_indirect -no-window -no-audio -skin 500x833 &
+      - sed -i s"#server#server-stable#" gradle.properties
+      - sed -i s"#1#5#" ./library/src/androidTest/java/com/owncloud/android/RetryTestRule.kt
+      - ./gradlew assembleDebug
+      - ./scripts/wait_for_emulator.sh
+      - ./scripts/wait_for_server.sh server-stable
+      - scripts/deleteOutdatedComments.sh "stable" "Unit" $DRONE_PULL_REQUEST $GIT_USERNAME $GIT_TOKEN
+      - scripts/deleteOutdatedComments.sh "stable" "IT" $DRONE_PULL_REQUEST $GIT_USERNAME $GIT_TOKEN
+      - ./gradlew jacocoTestDebugUnitTestReport || scripts/uploadReport.sh $LOG_USERNAME $LOG_PASSWORD $DRONE_BUILD_NUMBER "stable" "Unit" $DRONE_PULL_REQUEST $GIT_USERNAME $GIT_TOKEN
+      - ./gradlew installDebugAndroidTest
+      - ./gradlew createDebugCoverageReport || scripts/uploadReport.sh $LOG_USERNAME $LOG_PASSWORD $DRONE_BUILD_NUMBER "stable" "IT" $DRONE_PULL_REQUEST $GIT_USERNAME $GIT_TOKEN
+      - ./gradlew combinedTestReport
+      - curl -Os https://uploader.codecov.io/latest/linux/codecov
+      - chmod +x codecov
+      - ./codecov -t 2eec98c3-ff20-4cad-9e08-463471a33431
+
+  - name: notify
+    image: drillster/drone-email
+    settings:
+      port: 587
+      from: hnscloud-drone@kaminsky.me
+      recipients_only: true
+      username:
+        from_secret: EMAIL_USERNAME
+      password:
+        from_secret: EMAIL_PASSWORD
+      recipients:
+        from_secret: EMAIL_RECIPIENTS
+      host:
+        from_secret: EMAIL_HOST
+    when:
+      event:
+        - push
+      status:
+        - failure
+      branch:
+        - master
+        - stable-*
+
+services:
+  - name: server-stable
+    image: ghcr.io/hnscloud/continuous-integration-shallow-server:latest
+    environment:
+      SERVER_VERSION: stable27
+    commands:
+      - apt-get update && apt-get install -y composer
+      - mkdir /var/www/.nvm /var/www/.npm; touch /var/www/.bashrc; chown -R 33:33 /var/www/.nvm /var/www/.npm /var/www/.bashrc
+      - su www-data -c "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.37.2/install.sh | bash"
+      - su www-data -c "source ~/.bashrc; nvm install node"
+      - BRANCH="$SERVER_VERSION" /usr/local/bin/initnc.sh
+      - su www-data -c "php /var/www/html/occ log:manage --level warning"
+      - su www-data -c "OC_PASS=user1 php /var/www/html/occ user:add --password-from-env --display-name='User One' user1"
+      - su www-data -c "OC_PASS=user2 php /var/www/html/occ user:add --password-from-env --display-name='User Two' user2"
+      - su www-data -c "OC_PASS=user3 php /var/www/html/occ user:add --password-from-env --display-name='User Three' user3"
+      - su www-data -c "OC_PASS=test php /var/www/html/occ user:add --password-from-env --display-name='Test@Test' test@test"
+      - su www-data -c "OC_PASS=test php /var/www/html/occ user:add --password-from-env --display-name='Test Spaces' 'test test'"
+      - su www-data -c "php /var/www/html/occ user:setting user2 files quota 1G"
+      - su www-data -c "php /var/www/html/occ group:add users"
+      - su www-data -c "php /var/www/html/occ group:adduser users user1"
+      - su www-data -c "php /var/www/html/occ group:adduser users user2"
+      - su www-data -c "php /var/www/html/occ group:adduser users test"
+      - su www-data -c "git clone -b $SERVER_VERSION https://github.com/hnscloud/activity.git /var/www/html/apps/activity/"
+      - su www-data -c "php /var/www/html/occ app:enable activity"
+      - su www-data -c "git clone -b $SERVER_VERSION https://github.com/hnscloud/text.git /var/www/html/apps/text/"
+      - su www-data -c "php /var/www/html/occ app:enable text"
+      - su www-data -c "git clone -b $SERVER_VERSION https://github.com/hnscloud/end_to_end_encryption.git /var/www/html/apps/end_to_end_encryption/"
+      - su www-data -c "php /var/www/html/occ app:enable end_to_end_encryption"
+      - su www-data -c "git clone -b $SERVER_VERSION https://github.com/hnscloud/password_policy.git /var/www/html/apps/password_policy/"
+      - su www-data -c "php /var/www/html/occ app:enable password_policy"
+      - su www-data -c "php /var/www/html/occ app:enable external"
+      - su www-data -c 'php /var/www/html/occ config:app:set external sites --value="{\"1\":{\"id\":1,\"name\":\"Hnscloud\",\"url\":\"https:\/\/www.hns.vn\",\"lang\":\"\",\"type\":\"link\",\"device\":\"\",\"icon\":\"external.svg\",\"groups\":[],\"redirect\":false},\"2\":{\"id\":2,\"name\":\"Forum\",\"url\":\"https:\/\/help.hns.vn\",\"lang\":\"\",\"type\":\"link\",\"device\":\"\",\"icon\":\"external.svg\",\"groups\":[],\"redirect\":false}}"'
+      - su www-data -c "git clone -b $SERVER_VERSION https://github.com/hnscloud/files_lock.git /var/www/html/apps/files_lock/"
+      - su www-data -c "php /var/www/html/occ app:enable files_lock"
+      - su www-data -c "git clone -b $SERVER_VERSION https://github.com/hnscloud/groupfolders.git /var/www/html/apps/groupfolders/"
+      - su www-data -c "php /var/www/html/occ app:enable -f groupfolders"
+      - su www-data -c "php /var/www/html/occ groupfolders:create groupfolder"
+      - su www-data -c "php /var/www/html/occ groupfolders:group 1 users"
+      - su www-data -c "git clone -b $SERVER_VERSION https://github.com/hnscloud/notifications.git /var/www/html/apps/notifications/"
+      - su www-data -c "php /var/www/html/occ app:enable -f notifications"
+      - su www-data -c "php /var/www/html/occ notification:generate test test"
+      - su www-data -c "git clone https://github.com/hnscloud/assistant.git /var/www/html/apps/assistant/"
+      - su www-data -c "cd /var/www/html/apps/assistant; git checkout tags/v1.0.2; source ~/.bashrc; make"
+      - su www-data -c "php /var/www/html/occ app:enable -f assistant"
+      - su www-data -c "php /var/www/html/occ app:enable -f testing"
+      - /usr/local/bin/run.sh
+
+trigger:
+  branch:
+    - master
+    - stable-*
+  event:
+    - push
+    - pull_request
+---
+kind: signature
+hmac: 05ce597eecb009f9783123cd1e1e507ceed79671fcb5544cd8d4eaafb6df49c1
+
+...
